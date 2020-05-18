@@ -1,0 +1,55 @@
+module main
+{
+  type light_t = bv2; // red is 0bv2, green is 1bv2, and yellow is 2bv2
+  var step1, step2   : integer;
+  var light1, light2 : light_t;
+
+  synthesis function h1(x : integer, y : bv2) : boolean;
+  synthesis function h2(x : integer, y : bv2) : boolean;
+  synthesis function h3(x : integer, y : bv2) : boolean;
+
+  init {
+    light1, step1 = 0bv2,   2;
+    light2, step2 = 1bv2, 1;
+  }
+
+  next {
+    call (light1', step1') = next_light(light1, step1);
+    call (light2', step2') = next_light(light2, step2);
+  }
+
+  procedure next_light(light : light_t, step : integer)
+   returns (lightP : light_t, stepP: integer)
+  {
+    if (step == 0) {
+      case
+      (h1(step, light)) : {
+        lightP = 2bv2;
+        stepP = step;
+      }
+      (h2(step, light)) : {
+        lightP = 0bv2;
+        stepP = 2;
+      }
+      (h3(step, light)) : {
+        lightP = 1bv2;
+        stepP = 1;
+      }
+      esac
+    } else {
+      lightP = light;
+      stepP = step - 1;
+    }
+  }
+
+  property[LTL] always_one_red: G(light1 == 0bv2 || light2 == 0bv2);
+  property[LTL] eventually_green: 
+    G(F(light1 == 1bv2)) && G(F(light2 == 1bv2));
+
+  control {
+    v = bmc[properties=[always_one_red, eventually_green]](10);
+    check;
+    print_results;
+    v.print_cex(light1, step1, light2, step2);
+  }
+}
