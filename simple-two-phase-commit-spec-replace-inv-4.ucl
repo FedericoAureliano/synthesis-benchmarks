@@ -1,0 +1,385 @@
+module Common {
+    type machine_id = integer;
+    type event_id   = integer;
+    // type signal_t   = enum { 
+    //     0bv3, 
+    //     1bv3, 
+    //     2bv3, 
+    //     3bv3, 
+    //     4bv3, 
+    //     5bv3
+    // };
+    type signal_t = bv3;
+
+    // type event_t  = record {
+    //     signal: signal_t,
+    //     source: machine_id,
+    //     target: machine_id,
+    //     data  : integer
+    // };
+
+    const coordinator_id : machine_id;
+    axiom coordinator_id == 0;
+    const participant_count : machine_id;
+    axiom participant_count == 2;
+    const participant_i : machine_id;
+    const participant_j : machine_id;
+    axiom participant_i != participant_j;
+    axiom participant_i > 0 && participant_i <= 2;
+    axiom participant_j > 0 && participant_j <= 2;
+}
+
+
+module Participant {
+    type * = Common.*;
+    // type state_t = enum {
+    //     WAITFORREQUESTS
+    // };
+
+    // var state : state_t;
+    var writes: integer;
+    var memory: [integer]integer;
+
+    input  inp_flag  : boolean;
+    output outp_flag : boolean;
+
+    input  inp_source  : machine_id;
+    input  inp_target  : machine_id;
+    input  inp_signal  : signal_t;
+    output  outp_source  : machine_id;
+    output  outp_target  : machine_id;
+    output  outp_signal  : signal_t;
+
+    procedure [inline] participant_WaitForRequests()
+        modifies writes, memory, outp_signal, outp_source, outp_target, outp_flag; // state
+    {
+        if (inp_flag) {
+            case 
+            (inp_signal == 3bv3) : {
+                var  w_target : machine_id;
+                var  w_source : machine_id;
+                var  w_signal : signal_t;
+                w_target = Common.coordinator_id;
+                w_source = inp_target; 
+                if (*) {
+                    w_signal = 1bv3;
+                    outp_flag = true;
+                    outp_source = w_source;
+                    outp_target = w_target;
+                    outp_signal = w_signal;
+                } else {
+                    w_signal = 2bv3;
+                    outp_flag = true;
+                    outp_source = w_source;
+                    outp_target = w_target;
+                    outp_signal = w_signal;
+                }
+            }
+            (inp_signal == 4bv3) : {
+                writes = writes + 1;
+            }
+            (inp_signal == 5bv3) : {
+            }
+            esac 
+        }
+    }
+
+    init {
+        // state = WAITFORREQUESTS;
+        writes = 0;
+    }
+
+    next {
+        // if (state == WAITFORREQUESTS) {
+            call () = participant_WaitForRequests();
+        // }
+    }
+}
+
+module main {
+    type * = Common.*;
+    // type state_t = enum {
+    //     0bv1, 
+    //     1bv1
+    // };
+    type state_t = bv1;
+
+    input  in_c_target : machine_id;
+    input  in_c_source : machine_id;
+    input  in_c_signal : signal_t;
+    input  flag_c : boolean;
+
+    var  from_i_target : machine_id;
+    var  from_i_source : machine_id;
+    var  from_i_signal : signal_t;
+    
+    var  from_i_flag : boolean;
+    var  to_i_target : machine_id;
+    var  to_i_source : machine_id;
+    var  to_i_signal : signal_t;
+    var  to_i_flag   : boolean;
+
+    var  from_j_target : machine_id;
+    var  from_j_source : machine_id;
+    var  from_j_signal : signal_t;
+    var  from_j_flag : boolean;
+    var  to_j_target : machine_id;
+    var  to_j_source : machine_id;
+    var  to_j_signal : signal_t;
+    var  to_j_flag   : boolean;
+
+    var state : state_t;
+    var countPrepareResponses : integer;
+
+    instance i : Participant (
+        inp_flag : (to_i_flag),
+        inp_source : (to_i_source),
+        inp_target : (to_i_target),
+        inp_signal : (to_i_signal),
+        outp_flag : (from_i_flag),
+        outp_source : (from_i_source),
+        outp_target : (from_i_target),
+        outp_signal : (from_i_signal)
+    );
+
+    instance j : Participant (
+        inp_flag : (to_j_flag),
+        inp_source : (to_j_source),
+        inp_target : (to_j_target),
+        inp_signal : (to_j_signal),
+        outp_flag : (from_j_flag),
+        outp_source : (from_j_source),
+        outp_target : (from_j_target),
+        outp_signal : (from_j_signal)
+    );
+
+    procedure [inline] coordinator_WaitForTransactions()
+        modifies state, to_i_flag, to_j_flag, to_i_target, to_i_source, to_i_signal, to_j_target, to_j_source, to_j_signal, countPrepareResponses;
+    {
+        if (flag_c) {
+            var  w_i_target : machine_id;
+            var  w_i_source : machine_id;
+            var  w_i_signal : signal_t;
+            var  w_j_target : machine_id;
+            var  w_j_source : machine_id;
+            var  w_j_signal : signal_t;
+            // will wait for participants
+            assume(!to_i_flag && !to_j_flag);
+            w_i_target = Common.participant_i;
+            w_i_source = Common.coordinator_id; 
+            w_i_signal = 3bv3;
+            to_i_signal = w_i_signal;
+            to_i_target = w_i_target;
+            to_i_source = w_i_source;
+            w_j_target = Common.participant_j;
+            w_j_source = Common.coordinator_id; 
+            w_j_signal = 3bv3;
+            to_j_signal = w_j_signal;
+            to_j_target = w_j_target;
+            to_j_source = w_j_source;
+            countPrepareResponses = 0;
+            state = 1bv1;
+            to_i_flag = true; 
+            to_j_flag = true;
+        }
+    }
+
+    procedure [inline] coordinator_WaitForPrepareResponses( choice : integer)
+        modifies state, to_i_flag, to_j_flag, to_i_target, to_i_source, to_i_signal, to_j_target, to_j_source, to_j_signal, countPrepareResponses;
+    {
+        case 
+        (choice == 1) : {
+            case 
+            (from_i_signal == 1bv3) : {
+                countPrepareResponses = countPrepareResponses + 1;
+                if (countPrepareResponses == Common.participant_count) {
+                    var  w_i_target : machine_id;
+                    var  w_i_source : machine_id;
+                    var  w_i_signal : signal_t;
+                    var  w_j_target : machine_id;
+                    var  w_j_source : machine_id;
+                    var  w_j_signal : signal_t;
+                    w_i_target = Common.participant_i;
+                    w_i_source = Common.coordinator_id; 
+                    w_i_signal = 4bv3;
+                    to_i_signal = w_i_signal;
+                    to_i_target = w_i_target;
+                    to_i_source = w_i_source;
+                    to_i_flag = true; 
+                    w_j_target = Common.participant_j;
+                    w_j_source = Common.coordinator_id; 
+                    w_j_signal = 4bv3;
+                    to_j_signal = w_j_signal;
+                    to_j_target = w_j_target;
+                    to_j_source = w_j_source;
+                    to_j_flag = true;
+                    state = 0bv1;
+                }
+            }
+            (from_i_signal == 2bv3) : {
+                var  w_i_target : machine_id;
+                var  w_i_source : machine_id;
+                var  w_i_signal : signal_t;
+                var  w_j_target : machine_id;
+                var  w_j_source : machine_id;
+                var  w_j_signal : signal_t;
+                w_i_target = Common.participant_i;
+                w_i_source = Common.coordinator_id; 
+                w_i_signal = 5bv3;
+                to_i_signal = w_i_signal;
+                to_i_target = w_i_target;
+                to_i_source = w_i_source;
+                to_i_flag = true; 
+                w_j_target = Common.participant_j;
+                w_j_source = Common.coordinator_id; 
+                w_j_signal = 5bv3;
+                to_j_signal = w_j_signal;
+                to_j_target = w_j_target;
+                to_j_source = w_j_source;
+                to_j_flag = true;
+                state = 0bv1;
+            }
+            esac
+        }
+        (choice == 2) : {
+            case (from_j_signal == 1bv3) : {
+                countPrepareResponses = countPrepareResponses + 1;
+                if (countPrepareResponses == Common.participant_count) {
+                    var  w_i_target : machine_id;
+                    var  w_i_source : machine_id;
+                    var  w_i_signal : signal_t;
+                    var  w_j_target : machine_id;
+                    var  w_j_source : machine_id;
+                    var  w_j_signal : signal_t;
+                    w_i_target = Common.participant_i;
+                    w_i_source = Common.coordinator_id; 
+                    w_i_signal = 4bv3;
+                    to_i_signal = w_i_signal;
+                    to_i_target = w_i_target;
+                    to_i_source = w_i_source;
+                    to_i_flag = true; 
+                    w_j_target = Common.participant_j;
+                    w_j_source = Common.coordinator_id; 
+                    w_j_signal = 4bv3;
+                    to_j_signal = w_j_signal;
+                    to_j_target = w_j_target;
+                    to_j_source = w_j_source;
+                    to_j_flag = true;
+                    state = 0bv1;
+                }
+            }
+            (from_j_signal == 2bv3) : {
+                var  w_i_target : machine_id;
+                var  w_i_source : machine_id;
+                var  w_i_signal : signal_t;
+                var  w_j_target : machine_id;
+                var  w_j_source : machine_id;
+                var  w_j_signal : signal_t;
+                w_i_target = Common.participant_i;
+                w_i_source = Common.coordinator_id; 
+                w_i_signal = 5bv3;
+                to_i_signal = w_i_signal;
+                to_i_target = w_i_target;
+                to_i_source = w_i_source;
+                to_i_flag = true; 
+                w_j_target = Common.participant_j;
+                w_j_source = Common.coordinator_id; 
+                w_j_signal = 5bv3;
+                to_j_signal = w_j_signal;
+                to_j_target = w_j_target;
+                to_j_source = w_j_source;
+                to_j_flag = true;
+                state = 0bv1;
+            }
+            esac
+        }
+        esac
+    }
+
+    init {
+        state = 0bv1;
+        countPrepareResponses = 0;
+        to_i_flag = false;
+        to_j_flag = false;
+        from_i_flag = false;
+        from_j_flag = false;
+    }
+
+    next {
+        if (*) {
+            case 
+            (state == 0bv1) : {
+                call () = coordinator_WaitForTransactions();
+            } 
+            (state == 1bv1) : {
+                var choice : integer;
+                case 
+                (from_i_flag && from_j_flag) : {
+                    if (*) {
+                        choice = 1;
+                    } else {
+                        choice = 2;
+                    }
+                    from_i_flag' = false;
+                    from_j_flag' = false;
+                } 
+                (from_i_flag) : {
+                    choice = 1;
+                    from_i_flag' = false;
+                } 
+                (from_j_flag) : {
+                    choice = 2;
+                    from_j_flag' = false;
+                }
+                (true) : {
+                    choice = 3;
+                }
+                esac
+                call () = coordinator_WaitForPrepareResponses(choice);
+            }
+            esac
+        } else {
+            if (*) {
+                next(i);
+                to_i_flag' = false;
+            }
+            if (*) {
+                next(j);
+                to_j_flag' = false;
+            }
+        }
+    }
+
+    invariant same_writes: (state == 0bv1 && !to_i_flag && !to_j_flag) ==> i.writes == j.writes;
+
+    invariant close_invariants: i.writes == j.writes || i.writes == j.writes + 1 || i.writes + 1 == j.writes;
+
+    invariant i_behind_means_i_commit: i.writes < j.writes ==> (to_i_flag && !to_j_flag && to_i_signal == 4bv3);
+    invariant j_behind_means_j_commit: j.writes < i.writes ==> (to_j_flag && !to_i_flag && to_j_signal == 4bv3);
+    invariant equal_means_no_commit_or_both_commit: i.writes == j.writes ==> 
+        (to_i_flag && to_i_signal == 4bv3 && to_j_flag && to_j_signal == 4bv3) ||
+        ((!to_i_flag || to_i_signal != 4bv3) && (!to_j_flag || to_j_signal != 4bv3));
+
+    synthesis function h(w : integer, x : integer) : boolean;
+    // invariant count_range : countPrepareResponses >= 0 && countPrepareResponses <= Common.participant_count;
+    invariant hole: h(countPrepareResponses, Common.participant_count);
+
+    invariant nothing_to_wait_for : countPrepareResponses == Common.participant_count ==> (state == 0bv1);
+
+    invariant not_i_commit_and_j_abort: (to_i_flag && to_i_signal == 4bv3) ==> (to_j_flag ==> to_j_signal != 5bv3);
+    invariant not_j_commit_and_i_abort: (to_j_flag && to_j_signal == 4bv3) ==> (to_i_flag ==> to_i_signal != 5bv3);
+
+    invariant below_count_means_i_no_commit: countPrepareResponses < Common.participant_count ==> (!to_i_flag || to_i_signal != 4bv3);
+    invariant below_count_means_j_no_commit: countPrepareResponses < Common.participant_count ==> (!to_j_flag || to_j_signal != 4bv3);
+
+    invariant full_count_means_equal: countPrepareResponses == Common.participant_count ==> 
+        (i.writes == j.writes) || 
+        (i.writes < j.writes && to_i_flag && to_i_signal == 4bv3) ||
+        (j.writes < i.writes && to_j_flag && to_j_signal == 4bv3) ;
+
+    control {
+        induction;
+        check;
+        print_results;
+    }
+}
