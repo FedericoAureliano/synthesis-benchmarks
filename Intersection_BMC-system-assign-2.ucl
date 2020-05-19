@@ -1,0 +1,140 @@
+module main
+{
+  // The various positions the cars can be in.
+  // type pos_t = enum { 0bv4, 1bv4, 2bv4, 3bv4, 
+  //                     4bv4, 5bv4, 6bv4, 7bv4,
+  //                     8bv4, 9bv4, 10bv4, 11bv4 };
+  type pos_t = bv4;
+
+  // We now define a number of helper macros.
+
+  // Are we at a source zone?
+  define at_source(p : pos_t) : boolean = 
+    p == 1bv4 || p == 4bv4 || p == 2bv4 || p == 7bv4;
+
+  // Are we at a sink zone?
+  define at_sink(p : pos_t) : boolean = 
+    p == 0bv4 || p == 5bv4 || p == 3bv4 || p == 6bv4;
+
+  // The valid values of steps at a source are between 1 and 4.  The value in
+  // steps is the number of steps after which the car will exit the
+  // intersection. 1 = right turn while 4 is a U-turn.
+  define valid_steps_at_src(s : integer) : boolean =
+    (s >= 1 && s <= 4);
+
+  // The valid values of steps are between -1 (at a sink) and 4 (at a source).
+  define valid_steps(s : integer) : boolean =
+    (s >= -1 && s <= 4);
+
+  // Are we inside the intersection?
+  define in_intersection(p : pos_t) : boolean =
+    p == 8bv4 || p == 9bv4 || p == 10bv4 || p == 11bv4;
+
+
+  synthesis function h1(x : integer, y : bv4, z :bv4) : bv4;
+  synthesis function h2(x : integer, y : bv4, z :bv4) : bv4;
+
+  // This procedure returns a potential next position for the car currently at
+  // p. It also decrements the step counter. p2 and p3 are the locations of the
+  // other two cars.
+  procedure next_location (p : pos_t, p2 : pos_t, p3 : pos_t, steps_p : integer) 
+    returns (q : pos_t, steps_q : integer) 
+  {
+    case
+      // If we are a sink, then respawn.
+      at_sink(p)  : { havoc q; assume at_source(q) && q != p2 && q != p3; }
+      p == 1bv4 : { q = 10bv4; }
+      p == 4bv4 : { q = 11bv4; }
+      p == 2bv4 : { q = 9bv4; }
+      p == 7bv4 : { q = 8bv4; }
+      // p == 10bv4   : { if (steps_p > 0) { q = 11bv4; } else { q = 5bv4; } }
+      p == 10bv4   : { q = h1(steps_p, p, q); }
+    //   p == 11bv4   : { if (steps_p > 0) { q = 9bv4; } else { q = 3bv4; } }
+      p == 11bv4   : { q = h2(steps_p, p, q); }
+      p == 9bv4   : { if (steps_p > 0) { q = 8bv4; } else { q = 6bv4; } }
+      p == 8bv4   : { if (steps_p > 0) { q = 10bv4; } else { q = 0bv4; } }
+    esac
+    if (at_sink(p)) {
+        // Reset steps if we respawned.
+        havoc steps_q;
+        assume valid_steps_at_src(steps_q);
+    } else {
+        // Decrement steps.
+        steps_q = steps_p - 1;
+    }
+  }
+
+  // This function returns a tuple which tells us which car(s) are allowed to move. 
+  procedure can_move(c1 : pos_t, c2 : pos_t, c3 : pos_t)
+    returns (move_p1 : boolean, move_p2 : boolean, move_p3 : boolean)
+    modifies turn;
+  {
+      move_p1, move_p2, move_p3 = false, false, false;
+      case
+        (turn == 0bv2) : { move_p1 = true; if (at_sink(c1)) { turn = 1bv2; } }
+        (turn == 1bv2) : { move_p2 = true; if (at_sink(c2)) { turn = 2bv2; } }
+        (turn == 2bv2) : { move_p3 = true; if (at_sink(c3)) { turn = 0bv2; } }
+      esac
+  }
+
+  var car1_pos, car2_pos, car3_pos : pos_t;
+  var car1_nxt, car2_nxt, car3_nxt : pos_t;
+  var steps1, steps2, steps3 : integer;
+  var steps1_nxt, steps2_nxt, steps3_nxt : integer;
+  var wait_cnt1, wait_cnt2, wait_cnt3 : integer;
+  var move1, move2, move3 : boolean;
+
+  // Whose turn is it to move?
+  // type turn_t = enum { 0bv2, 1bv2, 2bv2 };
+  type turn_t = bv2;
+  var turn : turn_t;
+
+  init {
+    assume (car1_pos != car2_pos) && (car2_pos != car3_pos) && (car3_pos != car1_pos);
+    assume (valid_steps_at_src(steps1) && valid_steps_at_src(steps2) && valid_steps_at_src(steps3));
+    assume (at_source(car1_pos) && at_source(car2_pos) && at_source(car3_pos));
+    turn = 0bv2;
+    wait_cnt1, wait_cnt2, wait_cnt3 = 0, 0, 0;
+  }
+
+  next {
+    if (at_sink(car1_pos)) { wait_cnt1' = 0; } else { wait_cnt1' = wait_cnt1 + 1; }
+    if (at_sink(car2_pos)) { wait_cnt2' = 0; } else { wait_cnt2' = wait_cnt2 + 1; }
+    if (at_sink(car3_pos)) { wait_cnt3' = 0; } else { wait_cnt3' = wait_cnt3 + 1; }
+
+    call (car1_nxt', steps1_nxt') = next_location(car1_pos, car2_pos, car3_pos, steps1);
+    call (car2_nxt', steps2_nxt') = next_location(car2_pos, car3_pos, car1_pos, steps2);
+    call (car3_nxt', steps3_nxt') = next_location(car3_pos, car1_pos, car2_pos, steps3);
+
+    call (move1', move2', move3') = can_move(car1_pos, car2_pos, car3_pos);
+
+    // set next state
+    car1_pos' = if (move1') then car1_nxt' else car1_pos;
+    car2_pos' = if (move2') then car2_nxt' else car2_pos;
+    car3_pos' = if (move3') then car3_nxt' else car3_pos;
+
+    steps1' = if (move1') then steps1_nxt' else steps1;
+    steps2' = if (move2') then steps2_nxt' else steps2;
+    steps3' = if (move3') then steps3_nxt' else steps3;
+  }
+
+  invariant no_collision: 
+    (car1_pos != car2_pos) && 
+    (car1_pos != car3_pos) && 
+    (car2_pos != car3_pos);
+  invariant bounded_exit: (wait_cnt1 <= 20 && wait_cnt2 <= 20 && wait_cnt3 <= 20);
+
+  assume(car1_pos >=_u 0bv4 && car1_pos <_u 12bv4);
+  assume(car2_pos >=_u 0bv4 && car2_pos <_u 12bv4);
+  assume(car3_pos >=_u 0bv4 && car3_pos <_u 12bv4);
+
+  control {
+    v = unroll(21);
+    check;
+    print_results;
+    v.print_cex(turn, 
+        car1_pos, car2_pos, car3_pos, 
+        steps1, steps2, steps3,
+        wait_cnt1, wait_cnt2, wait_cnt3);
+  }
+}
